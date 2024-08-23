@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Row, Col, ListGroup, Image, Card, Button } from 'react-bootstrap';
+import { Row, Col, ListGroup, Image, Card, Button, Form } from 'react-bootstrap';
 import { PayPalButtons, usePayPalScriptReducer } from '@paypal/react-paypal-js';
 import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
@@ -11,6 +11,7 @@ import {
   useGetOrderDetailsQuery,
   useGetPaypalClientIdQuery,
   usePayOrderMutation,
+  useMarkAsPaidMutation
 } from '../slices/ordersApiSlice';
 
 const OrderScreen = () => {
@@ -24,7 +25,6 @@ const OrderScreen = () => {
   } = useGetOrderDetailsQuery(orderId);
 
   const [payOrder, { isLoading: loadingPay }] = usePayOrderMutation();
-
   const [deliverOrder, { isLoading: loadingDeliver }] =
     useDeliverOrderMutation();
 
@@ -39,7 +39,7 @@ const OrderScreen = () => {
   } = useGetPaypalClientIdQuery();
 
   useEffect(() => {
-    if (!errorPayPal && !loadingPayPal && paypal.clientId) {
+    if (!errorPayPal && !loadingPayPal && paypal.clientId && order?.paymentMethod === 'PayPal') {
       const loadPaypalScript = async () => {
         paypalDispatch({
           type: 'resetOptions',
@@ -61,6 +61,8 @@ const OrderScreen = () => {
   function onApprove(data, actions) {
     return actions.order.capture().then(async function (details) {
       try {
+        console.log({ details });
+
         await payOrder({ orderId, details });
         refetch();
         toast.success('Order is paid');
@@ -69,14 +71,6 @@ const OrderScreen = () => {
       }
     });
   }
-
-  // TESTING ONLY! REMOVE BEFORE PRODUCTION
-  // async function onApproveTest() {
-  //   await payOrder({ orderId, details: { payer: {} } });
-  //   refetch();
-
-  //   toast.success('Order is paid');
-  // }
 
   function onError(err) {
     toast.error(err.message);
@@ -87,7 +81,7 @@ const OrderScreen = () => {
       .create({
         purchase_units: [
           {
-            amount: { value: order.totalPrice },
+            amount: { value: order.usdPrice }, // Use the converted USD amount
           },
         ],
       })
@@ -99,6 +93,18 @@ const OrderScreen = () => {
   const deliverHandler = async () => {
     await deliverOrder(orderId);
     refetch();
+  };
+
+  const [markAsPaid, { isLoading: loadingMarkAsPaid }] = useMarkAsPaidMutation();
+
+  const markAsPaidHandler = async () => {
+    try {
+      await markAsPaid(orderId);
+      refetch();
+      toast.success('Order marked as paid by admin');
+    } catch (error) {
+      toast.error('Failed to mark the order as paid');
+    }
   };
 
   return isLoading ? (
@@ -171,7 +177,8 @@ const OrderScreen = () => {
                           </Link>
                         </Col>
                         <Col md={4}>
-                          {item.qty} x Ksh. {item.price} = Ksh. {item.qty * item.price}
+                          {item.qty} x Ksh. {item.price} = Ksh.{' '}
+                          {item.qty * item.price}
                         </Col>
                       </Row>
                     </ListGroup.Item>
@@ -207,39 +214,89 @@ const OrderScreen = () => {
               </ListGroup.Item>
               <ListGroup.Item>
                 <Row>
-                  <Col>Total</Col>
+                  <Col>Total (KES)</Col>
                   <Col>Ksh. {order.totalPrice}</Col>
                 </Row>
               </ListGroup.Item>
-              {!order.isPaid && (
+              <ListGroup.Item>
+                <Row>
+                  <Col>Total (USD)</Col>
+                  <Col>${order.usdPrice}</Col>
+                </Row>
+              </ListGroup.Item>
+              {!order.isPaid && order.paymentMethod === 'PayPal' && (
                 <ListGroup.Item>
                   {loadingPay && <Loader />}
-
                   {isPending ? (
                     <Loader />
                   ) : (
-                    <div>
-                      {/* THIS BUTTON IS FOR TESTING! REMOVE BEFORE PRODUCTION! */}
-                      {/* <Button
-                        style={{ marginBottom: '10px' }}
-                        onClick={onApproveTest}
-                      >
-                        Test Pay Order
-                      </Button> */}
-
-                      <div>
-                        <PayPalButtons
-                          createOrder={createOrder}
-                          onApprove={onApprove}
-                          onError={onError}
-                        ></PayPalButtons>
-                      </div>
-                    </div>
+                    <PayPalButtons
+                      createOrder={createOrder}
+                      onApprove={onApprove}
+                      onError={onError}
+                    />
                   )}
                 </ListGroup.Item>
               )}
 
+              {!order.isPaid && order.paymentMethod === 'Crypto' && (
+                <ListGroup.Item>
+                  <h4>Pay with Cryptocurrency</h4>
+                  <Form.Group>
+                    <Form.Label><strong>ETH Address:</strong></Form.Label>
+                    <Form.Control
+                      type="text"
+                      value="0xcFd3935D951162115Be40147DCA0167380b0bCdE"
+                      readOnly
+                      onClick={(e) => e.target.select()}
+                    />
+                  </Form.Group>
+                  <Form.Group>
+                    <Form.Label><strong>BTC Address:</strong></Form.Label>
+                    <Form.Control
+                      type="text"
+                      value="bc1q646reyflf2erv5rh6v79xf7jjrjzqhv6gztemk"
+                      readOnly
+                      onClick={(e) => e.target.select()}
+                    />
+                  </Form.Group>
+                  <Form.Group>
+                    <Form.Label><strong>USDT Address:</strong></Form.Label>
+                    <Form.Control
+                      type="text"
+                      value="0x39C7E7b14570B028C0bE643853215dC8814F179E"
+                      readOnly
+                      onClick={(e) => e.target.select()}
+                    />
+                  </Form.Group>
+                  <div className='mt-4'>
+                    <p>Contact us for payment info:</p>
+                    <ul style={{ listStyleType: 'none' }} className='container'>
+                      <li >
+                        <i className="fas fa-envelope"></i> <span className='col'><a href="mailto:support@yourdomain.com">support@yourdomain.com</a></span>
+                      </li>
+                      <li>
+                        <i className="fas fa-phone"></i> <span><a href="tel:+123456789">+123456789</a></span>
+                      </li>
+                    </ul>
+                    <p>Reach out to us if you get stuck in any of the payment and ordering steps. Thank you!</p>
+                  </div>
+                </ListGroup.Item>
+              )}
+
               {loadingDeliver && <Loader />}
+              {userInfo && userInfo.isAdmin && !order.isPaid && order.paymentMethod === 'Crypto' && (
+                <ListGroup.Item>
+                  <Button
+                    type='button'
+                    className='btn btn-block'
+                    onClick={markAsPaidHandler}
+                    disabled={loadingMarkAsPaid}
+                  >
+                    {loadingMarkAsPaid ? 'Marking...' : 'Mark As Paid'}
+                  </Button>
+                </ListGroup.Item>
+              )}
 
               {userInfo &&
                 userInfo.isAdmin &&
