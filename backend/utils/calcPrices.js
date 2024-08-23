@@ -19,16 +19,15 @@ export function calcPrices(orderItems) {
   const shippingPrice = itemsPrice > 100 ? 0 : 10;
 
   // Calculate the tax price
-  const taxPrice = 0.15 * itemsPrice;
 
   // Calculate the total price
-  const totalPrice = itemsPrice + shippingPrice + taxPrice;
+  const totalPrice = itemsPrice + shippingPrice;
 
   // return prices as strings fixed to 2 decimal places
   return {
     itemsPrice: addDecimals(itemsPrice),
     shippingPrice: addDecimals(shippingPrice),
-    taxPrice: addDecimals(taxPrice),
+    taxPrice: 0,
     totalPrice: addDecimals(totalPrice),
   };
 }
