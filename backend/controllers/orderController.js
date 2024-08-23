@@ -3,6 +3,7 @@ import Order from '../models/orderModel.js';
 import Product from '../models/productModel.js';
 import { calcPrices } from '../utils/calcPrices.js';
 import { verifyPayPalPayment, checkIfNewTransaction } from '../utils/paypal.js';
+import { convertKESToUsd } from '../utils/rates.js';
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -41,6 +42,7 @@ const addOrderItems = asyncHandler(async (req, res) => {
     const { itemsPrice, taxPrice, shippingPrice, totalPrice } =
       calcPrices(dbOrderItems);
 
+    const usdPrice = parseFloat(await convertKESToUsd(totalPrice)).toFixed(2);
     const order = new Order({
       orderItems: dbOrderItems,
       user: req.user._id,
@@ -50,6 +52,7 @@ const addOrderItems = asyncHandler(async (req, res) => {
       taxPrice,
       shippingPrice,
       totalPrice,
+      usdPrice
     });
 
     const createdOrder = await order.save();
@@ -100,7 +103,9 @@ const updateOrderToPaid = asyncHandler(async (req, res) => {
 
   if (order) {
     // check the correct amount was paid
-    const paidCorrectAmount = order.totalPrice.toString() === value;
+    console.log({order, value});
+    
+    const paidCorrectAmount = order.usdPrice === parseFloat(value);
     if (!paidCorrectAmount) throw new Error('Incorrect amount paid');
 
     order.isPaid = true;
@@ -148,6 +153,32 @@ const getOrders = asyncHandler(async (req, res) => {
   res.json(orders);
 });
 
+// @desc    Manually mark order as paid by admin
+// @route   PUT /api/orders/:id/markAsPaid
+// @access  Private/Admin
+const updateOrderToPaidManually = asyncHandler(async (req, res) => {
+  const order = await Order.findById(req.params.id);
+
+  if (order) {
+    order.isPaid = true;
+    order.paidAt = Date.now();
+    order.paymentResult = {
+      id: 'admin',
+      status: 'MANUAL_PAYMENT',
+      update_time: Date.now(),
+      email_address: order.user.email, // Assuming admin is marking for the user
+    };
+
+    const updatedOrder = await order.save();
+
+    res.json(updatedOrder);
+  } else {
+    res.status(404);
+    throw new Error('Order not found');
+  }
+});
+
+
 export {
   addOrderItems,
   getMyOrders,
@@ -155,4 +186,5 @@ export {
   updateOrderToPaid,
   updateOrderToDelivered,
   getOrders,
+  updateOrderToPaidManually
 };
